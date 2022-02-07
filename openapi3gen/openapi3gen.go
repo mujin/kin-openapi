@@ -142,8 +142,17 @@ func getStructField(t reflect.Type, fieldInfo jsoninfo.FieldInfo) reflect.Struct
 // Returns the parent of the given type
 // Assumes that the parents slice contains the type itself in the last element
 func getParentType(parents []*jsoninfo.TypeInfo, t reflect.Type, name string, tag reflect.StructTag) (*jsoninfo.TypeInfo, error) {
-	if len(parents) > 1 {
-		return parents[len(parents)-2], nil
+	// Climb parent tree until the type is not a slice or map
+	jump := 2
+	for len(parents) > jump-1 {
+		parent := parents[len(parents)-jump]
+		if parent.Type.Kind() == reflect.Slice || parent.Type.Kind() == reflect.Map {
+			// fmt.Printf("parent was slice or map: %v\n", parent.Type.Name())
+			jump = jump + 1  // Move one level up
+		} else {
+			// fmt.Printf("parent is good: %v\n", parent.Type.Name())
+			return parent, nil
+		}
 	}
 	return nil, nil
 }
@@ -153,6 +162,7 @@ func getParentType(parents []*jsoninfo.TypeInfo, t reflect.Type, name string, ta
 func getFieldName(parents []*jsoninfo.TypeInfo, t reflect.Type, name string, tag reflect.StructTag) string {
 	parent, err := getParentType(parents, t, name, tag)
 	if err != nil {
+		fmt.Println( "Could not find parent for type ", t.Name())
 		return ""
 	}
 	for _, field := range parent.Fields {
@@ -160,7 +170,11 @@ func getFieldName(parents []*jsoninfo.TypeInfo, t reflect.Type, name string, tag
 			return field.FieldName
 		}
 	}
-	fmt.Println("Couldn't find the field name: ", name)
+	fmt.Println(" ")
+	for index, p := range parents {
+		fmt.Println("p[", index, "]: ", p.Type)
+	}
+	fmt.Println("Couldn't find the field name: ", name, " in type ", t.Name())
 	return ""
 }
 
@@ -366,6 +380,10 @@ func (g *Generator) generateWithoutSaving(parents []*jsoninfo.TypeInfo, t reflec
 		parent, _ := getParentType(parents, t, name, tag)
 		if parent != nil {
 			fieldName := getFieldName(parents, t, name, tag)
+			if fieldName == "" {  //
+
+				fieldName = getFieldName(parents, t, strings.Title(name), tag)
+			}
 			if err := g.opts.schemaCustomizer(name, fieldName, t, tag, parent.Type, schema); err != nil {
 				return nil, err
 			}
